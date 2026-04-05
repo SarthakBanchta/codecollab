@@ -44,7 +44,8 @@ const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL,
     methods: ["GET", "POST"]
-  }
+  },
+  transports: ['websocket', 'polling']
 })
 
 const rooms = {}

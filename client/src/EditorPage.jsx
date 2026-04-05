@@ -3,7 +3,9 @@ import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import Editor from '@monaco-editor/react'
 
-const socket = io(import.meta.env.VITE_SERVER_URL)
+const socket = io(import.meta.env.VITE_SERVER_URL, {
+  transports: ['websocket', 'polling']
+})
 
 const COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
