@@ -3,10 +3,6 @@ import { useParams } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import Editor from '@monaco-editor/react'
 
-const socket = io(import.meta.env.VITE_SERVER_URL, {
-  transports: ['websocket', 'polling']
-})
-
 const COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4',
   '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F'
@@ -29,6 +25,7 @@ function EditorPage() {
   const decorationIds = useRef({})
   const userColors = useRef({})
   const throttleTimer = useRef(null)
+  const socketRef = useRef(null)  // ← socket in a ref
 
   const [users, setUsers] = useState([])
   const [selectedLang, setSelectedLang] = useState(LANGUAGES[0])
@@ -37,6 +34,12 @@ function EditorPage() {
   const [outputOpen, setOutputOpen] = useState(false)
 
   useEffect(() => {
+    // Create socket inside effect so it's tied to component lifecycle
+    const socket = io(import.meta.env.VITE_SERVER_URL, {
+      transports: ['websocket', 'polling']
+    })
+    socketRef.current = socket
+
     socket.emit('join-room', { roomId })
 
     socket.on('init-document', ({ content, version }) => {
@@ -81,12 +84,7 @@ function EditorPage() {
     })
 
     return () => {
-      socket.off('init-document')
-      socket.off('code-change')
-      socket.off('ack')
-      socket.off('room-users')
-      socket.off('cursor-move')
-      socket.off('cursor-leave')
+      socket.disconnect()
     }
   }, [roomId])
 
@@ -148,11 +146,11 @@ function EditorPage() {
   const handleEditorDidMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
-    socket.emit('request-document', { roomId })
+    socketRef.current.emit('request-document', { roomId })
 
     editor.onDidChangeModelContent((event) => {
       if (isRemoteChange.current) return
-      socket.emit('code-change', {
+      socketRef.current.emit('code-change', {
         roomId,
         changes: event.changes,
         baseVersion: currentVersion.current
@@ -162,7 +160,7 @@ function EditorPage() {
     editor.onDidChangeCursorPosition((event) => {
       if (throttleTimer.current) return
       throttleTimer.current = setTimeout(() => {
-        socket.emit('cursor-move', {
+        socketRef.current.emit('cursor-move', {
           roomId,
           position: {
             lineNumber: event.position.lineNumber,
@@ -187,7 +185,7 @@ function EditorPage() {
     setOutput('Running...')
 
     try {
-      const res = await fetch('http://localhost:3001/execute', {
+      const res = await fetch(`${import.meta.env.VITE_SERVER_URL}/execute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code, languageId: selectedLang.id })
@@ -208,7 +206,6 @@ function EditorPage() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#1e1e1e' }}>
-      {/* Toolbar */}
       <div style={{
         padding: '10px 20px',
         background: '#2d2d2d',
@@ -219,7 +216,6 @@ function EditorPage() {
         borderBottom: '1px solid #444'
       }}>
         <h2 style={{ margin: 0, fontSize: '18px' }}>CodeCollab</h2>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <select
             value={selectedLang.id}
@@ -288,7 +284,6 @@ function EditorPage() {
         </div>
       </div>
 
-      {/* Editor + Output panel */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <Editor
           height={outputOpen ? '65%' : '100%'}
@@ -315,22 +310,15 @@ function EditorPage() {
               justifyContent: 'space-between'
             }}>
               <span>OUTPUT</span>
-              <span
-                onClick={() => setOutputOpen(false)}
-                style={{ cursor: 'pointer', color: '#ff6b6b' }}
-              >
+              <span onClick={() => setOutputOpen(false)}
+                style={{ cursor: 'pointer', color: '#ff6b6b' }}>
                 ✕ Close
               </span>
             </div>
             <pre style={{
-              flex: 1,
-              margin: 0,
-              padding: '12px 16px',
-              color: '#d4d4d4',
-              fontFamily: 'monospace',
-              fontSize: '13px',
-              overflowY: 'auto',
-              whiteSpace: 'pre-wrap'
+              flex: 1, margin: 0, padding: '12px 16px',
+              color: '#d4d4d4', fontFamily: 'monospace',
+              fontSize: '13px', overflowY: 'auto', whiteSpace: 'pre-wrap'
             }}>
               {output}
             </pre>
