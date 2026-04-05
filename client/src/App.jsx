@@ -1,61 +1,53 @@
-import { useEffect, useRef } from 'react'
-import { io } from 'socket.io-client'
-import Editor from '@monaco-editor/react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
+import { v4 as uuidv4 } from 'uuid'
+import EditorPage from './EditorPage'
 
-const socket = io('http://localhost:3001')
+function Home() {
+  const navigate = useNavigate()
 
-function App() {
-  const editorRef = useRef(null)
-  const isRemoteChange = useRef(false)
-
-  useEffect(() => {
-    socket.on('code-change', ({ changes }) => {
-      if (editorRef.current) {
-        isRemoteChange.current = true
-        editorRef.current.executeEdits('remote', changes)
-        isRemoteChange.current = false
-      }
-    })
-
-    socket.on('init-document', (content) => {
-      if (editorRef.current) {
-        isRemoteChange.current = true
-        editorRef.current.setValue(content)
-        isRemoteChange.current = false
-      }
-    })
-
-    return () => {
-      socket.off('code-change')
-      socket.off('init-document')
-    }
-  }, [])
-
-  const handleEditorDidMount = (editor) => {
-    editorRef.current = editor
-
-    // Editor is ready — now ask server for current document
-    socket.emit('request-document')
-
-    editor.onDidChangeModelContent((event) => {
-      if (isRemoteChange.current) return
-      socket.emit('code-change', { changes: event.changes })
-    })
+  const createRoom = () => {
+    const roomId = uuidv4()
+    navigate(`/room/${roomId}`)
   }
 
   return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '12px 20px', background: '#1e1e1e', color: 'white' }}>
-        <h2 style={{ margin: 0 }}>CodeCollab</h2>
-      </div>
-      <Editor
-        height="100%"
-        defaultLanguage="javascript"
-        defaultValue="// Start coding..."
-        theme="vs-dark"
-        onMount={handleEditorDidMount}
-      />
+    <div style={{
+      height: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: '#1e1e1e',
+      color: 'white'
+    }}>
+      <h1 style={{ marginBottom: '8px' }}>CodeCollab</h1>
+      <p style={{ color: '#888', marginBottom: '32px' }}>
+        Real-time collaborative code editor
+      </p>
+      <button
+        onClick={createRoom}
+        style={{
+          padding: '12px 28px',
+          background: '#0078d4',
+          color: 'white',
+          border: 'none',
+          borderRadius: '6px',
+          fontSize: '16px',
+          cursor: 'pointer'
+        }}
+      >
+        Create New Room
+      </button>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/room/:roomId" element={<EditorPage />} />
+    </Routes>
   )
 }
 
