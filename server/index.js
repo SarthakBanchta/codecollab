@@ -3,49 +3,33 @@ const express = require('express')
 const http = require('http')
 const { Server } = require('socket.io')
 const cors = require('cors')
+const axios = require('axios')
 
 const app = express()
 app.use(cors())
-
-const axios = require('axios')
 app.use(express.json())
 
 app.post('/execute', async (req, res) => {
   const { code, languageId } = req.body
-
   try {
-    // Submit code to Judge0
     const submitRes = await axios.post(
       'https://ce.judge0.com/submissions?wait=true',
-      {
-        source_code: code,
-        language_id: languageId,
-        stdin: ''
-      },
-      {
-        headers: { 'Content-Type': 'application/json' }
-      }
+      { source_code: code, language_id: languageId, stdin: '' },
+      { headers: { 'Content-Type': 'application/json' } }
     )
-
     const { stdout, stderr, compile_output, status } = submitRes.data
-
     res.json({
       output: stdout || stderr || compile_output || 'No output',
       status: status.description
     })
-
   } catch (err) {
     res.status(500).json({ output: 'Execution failed. Try again.', status: 'Error' })
   }
 })
 
 const server = http.createServer(app)
-
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  },
+  cors: { origin: "*", methods: ["GET", "POST"] },
   transports: ['websocket', 'polling']
 })
 
@@ -60,6 +44,14 @@ function getRoom(roomId) {
     }
   }
   return rooms[roomId]
+}
+
+function rebuildDocument(history) {
+  let doc = '// Start coding...'
+  for (const op of history) {
+    doc = applyChange(doc, op)
+  }
+  return doc
 }
 
 io.on('connection', (socket) => {
@@ -89,11 +81,14 @@ io.on('connection', (socket) => {
     const room = getRoom(roomId)
     const concurrentOps = room.history.slice(baseVersion)
 
-    let transformedChanges = changes
+    let snapshot = rebuildDocument(room.history.slice(0, baseVersion))
+
+    let transformedChanges = [...changes]
     for (const serverOp of concurrentOps) {
       transformedChanges = transformedChanges.map(change =>
-        transformChange(change, serverOp, room.document)
+        transformChange(change, serverOp, snapshot)
       )
+      snapshot = applyChange(snapshot, serverOp)
     }
 
     transformedChanges.forEach(change => {
